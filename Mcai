@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MINECRAFT AI</title>
+    
+    <!-- Embedded Manifest via Data URL -->
+    <link rel="manifest" href='data:application/manifest+json,{"name":"Minecraft AI","short_name":"MinecraftAI","start_url":"./index.html","display":"standalone","background_color":"#121212","theme_color":"#55FF55","orientation":"portrait","icons":[{"src":"https://crafthead.net/helm/Steve/192","sizes":"192x192","type":"image/png"}]}'>
+    <meta name="theme-color" content="#55FF55">
+    <link rel="apple-touch-icon" href="https://crafthead.net/helm/Steve/192">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Inter', sans-serif;
+            padding: 40px 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 35px;
+        }
+
+        header h1 {
+            font-family: 'Press Start 2P', monospace;
+            color: #55FF55;
+            font-size: 1.8rem;
+            text-shadow: 3px 3px 0px #000, 5px 5px 0px #1a3c10;
+            letter-spacing: 1px;
+        }
+
+        .search-container {
+            width: 100%;
+            max-width: 650px;
+            margin-bottom: 30px;
+        }
+
+        .search-box-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        .search-input {
+            flex: 1;
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1.1rem;
+            padding: 14px 18px;
+            outline: none;
+        }
+
+        .search-input:focus {
+            border-color: #55FF55;
+        }
+
+        .search-btn {
+            background: #55FF55;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            padding: 0 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .search-btn:hover {
+            background: #44cc44;
+        }
+
+        .results-container {
+            width: 100%;
+            max-width: 650px;
+            line-height: 1.7;
+            font-size: 1.15rem;
+        }
+
+        .ai-response {
+            color: #e0e0e0;
+            margin-bottom: 20px;
+            white-space: pre-line;
+        }
+
+        .skin-display {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+
+        .skin-display img {
+            height: 200px;
+            image-rendering: pixelated;
+            border-radius: 4px;
+            background: #1a1a1a;
+            padding: 10px;
+        }
+
+        .download-link {
+            display: inline-block;
+            background: #252525;
+            color: #55FF55;
+            padding: 10px 18px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 1rem;
+            border: 1px solid #333;
+        }
+
+        .download-link:hover {
+            background: #333;
+        }
+
+        .calc-box {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            margin-top: 15px;
+        }
+
+        .calc-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #55FF55;
+        }
+
+        .calc-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .calc-row input {
+            width: 120px;
+            padding: 8px 12px;
+            background: #1e1e1e;
+            border: 1px solid #333;
+            color: #fff;
+            border-radius: 6px;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        .calc-result {
+            margin-top: 8px;
+            font-weight: 600;
+            color: #00ffcc;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>MINECRAFT AI</h1>
+    </header>
+
+    <div class="search-container">
+        <div class="search-box-wrapper">
+            <input type="text" id="searchInput" class="search-input" placeholder="Ask about ores, mobs, skins, coordinates..." onkeydown="if(event.key==='Enter') executeSearch()">
+            <button class="search-btn" onclick="executeSearch()">Ask</button>
+        </div>
+    </div>
+
+    <div id="resultsContainer" class="results-container"></div>
+
+    <script>
+        // Inline Service Worker Registration via Blob
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                const CACHE_NAME = 'minecraft-ai-v1';
+                self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE_NAME)));
+                self.addEventListener('fetch', (e) => e.respondWith(caches.match(e.request).then(res => res || fetch(e.request))));
+            `;
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            navigator.serviceWorker.register(URL.createObjectURL(blob))
+                .catch(err => console.log("SW Error:", err));
+        }
+
+        // Language detection (Malayalam, Manglish, English)
+        function detectLanguageMode(text) {
+            const raw = text.toLowerCase();
+            if (/[\u0D00-\u0D7F]/.test(text)) return 'ml';
+
+            const manglishKeywords = ['cheyyan', 'enth', 'entha', 'vendath', 'vendathu', 'pattum', 'varum', 'ithu', 'ngane', 'aano', 'nalkanam', 'choichaal', 'tharanam', 'pettu', 'kazhiyumo', 'aahn', 'ulla', 'aanu', 'ingane', 'ethu', 'engane', 'koduthal', 'kodukanam', 'kittum', 'kaanum'];
+            return manglishKeywords.some(mk => raw.includes(mk)) ? 'manglish' : 'en';
+        }
+
+        // Levenshtein Distance Algorithm for Typo Detection
+        function getLevenshteinDistance(a, b) {
+            const matrix = [];
+            for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+            for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+            for (let i = 1; i <= b.length; i++) {
+                for (let j = 1; j <= a.length; j++) {
+                    matrix[i][j] = b.charAt(i - 1) === a.charAt(j - 1)
+                        ? matrix[i - 1][j - 1]
+                        : Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+                }
+            }
+            return matrix[b.length][a.length];
+        }
+
+        // Ore Database
+        const oreDatabase = [
+            { nameEn: "Diamond", nameMl: "ഡയമണ്ട്", keys: ["diamond", "ഡയമണ്ട്", "dimond"], descEn: "Diamond ore generates between Y = 16 and Y = -64.\nBest Y-Level: Y = -58.", descMl: "ഡയമണ്ട് ഓർ Y = 16 മുതൽ Y = -64 വരെയുണ്ട്.\nഏറ്റവും മികച്ച വൈ-ലെവൽ: Y = -58.", descManglish: "Diamond ore Y = 16 thottu Y = -64 vare kaanam.\nBest Y-Level: Y = -58." },
+            { nameEn: "Gold", nameMl: "ഗോൾഡ്", keys: ["gold", "ഗോൾഡ്", "golde"], descEn: "Overworld Gold: Y = 32 to Y = -64 (Best: Y = -16).\nBadlands: Up to Y = 256.\nNether Gold: Y = 10 to Y = 117.", descMl: "ഓവർവേൾഡിൽ ഗോൾഡ്: Y = 32 മുതൽ Y = -64 വരെ (Best: Y = -16).\nബാഡ്‌ലാൻഡ്സ് ബയോമിൽ: Y = 256 വരെ.\nനെതറിൽ: Y = 10 മുതൽ Y = 117 വരെ.", descManglish: "Overworld-il Gold: Y = 32 thottu Y = -64 vare (Best: Y = -16).\nBadlands-il: Y = 256 vare.\nNether-il: Y = 10 thottu Y = 117 vare." },
+            { nameEn: "Iron", nameMl: "ഐറൺ", keys: ["iron", "ഐറൺ", "ayaron", "airon"], descEn: "Iron generates between Y = -64 and Y = 320.\nBest Y-Levels: Y = 16 and Y = 232.", descMl: "ഐറൺ Y = -64 മുതൽ Y = 320 വരെയുണ്ട്.\nമികച്ച വൈ-ലെവൽ: ഭൂമിക്കടിയിൽ Y = 16, മലനിരകളിൽ Y = 232.", descManglish: "Iron Y = -64 thottu Y = 320 vare.\nBest Y-Levels: Underground Y = 16, Mountains Y = 232." },
+            { nameEn: "Coal", nameMl: "കോൾ", keys: ["coal", "കോൾ", "kole"], descEn: "Coal generates between Y = 0 and Y = 256.\nBest Y-Levels: Y = 96 and Y = 136.", descMl: "കോൾ Y = 0 മുതൽ Y = 256 വരെയുണ്ട്.\nമികച്ച വൈ-ലെവൽ: Y = 96, Y = 136.", descManglish: "Coal Y = 0 thottu Y = 256 vare.\nBest Y-Levels: Y = 96 and Y = 136." },
+            { nameEn: "Copper", nameMl: "കോപ്പർ", keys: ["copper", "കോപ്പർ"], descEn: "Copper generates between Y = -16 and Y = 112.\nBest Y-Level: Y = 48.", descMl: "കോപ്പർ Y = -16 മുതൽ Y = 112 വരെയുണ്ട്.\nമികച്ച വൈ-ലെവൽ: Y = 48.", descManglish: "Copper Y = -16 thottu Y = 112 vare.\nBest Y-Level: Y = 48." },
+            { nameEn: "Lapis Lazuli", nameMl: "ലാപിസ് ലാസുലി", keys: ["lapis", "ലാപിസ്"], descEn: "Lapis Lazuli generates between Y = 64 and Y = -64.\nBest Y-Level: Y = 0.", descMl: "ലാപിസ് ലാസുലി Y = 64 മുതൽ Y = -64 വരെയുണ്ട്.\nമികച്ച വൈ-ലെവൽ: Y = 0.", descManglish: "Lapis Lazuli Y = 64 thottu Y = -64 vare.\nBest Y-Level: Y = 0." },
+            { nameEn: "Redstone", nameMl: "റെഡ്സ്റ്റോൺ", keys: ["redstone", "റെഡ്സ്റ്റോൺ"], descEn: "Redstone generates between Y = 16 and Y = -64.\nBest Y-Level: Y = -58.", descMl: "റെഡ്സ്റ്റോൺ Y = 16 മുതൽ Y = -64 വരെയുണ്ട്.\nമികച്ച വൈ-ലെവൽ: Y = -58.", descManglish: "Redstone Y = 16 thottu Y = -64 vare.\nBest Y-Level: Y = -58." },
+            { nameEn: "Emerald", nameMl: "എമറാൾഡ്", keys: ["emerald", "എമറാൾഡ്"], descEn: "Emerald generates between Y = -16 and Y = 320.\nBest Y-Level: Y = 232.", descMl: "എമറാൾഡ് Y = -16 മുതൽ Y = 320 വരെയുണ്ട്.\nമികച്ച വൈ-ലെവൽ: Y = 232.", descManglish: "Emerald Y = -16 thottu Y = 320 vare.\nBest Y-Level: Y = 232." },
+            { nameEn: "Netherite", nameMl: "നെതറൈറ്റ്", keys: ["netherite", "debris", "ancient debris", "നെതറൈറ്റ്"], descEn: "Ancient Debris generates in Nether between Y = 8 and Y = 119.\nBest Y-Level: Y = 15.", descMl: "നെതറൈറ്റ് (Ancient Debris) നെതറിൽ Y = 8 മുതൽ Y = 119 വരെയുണ്ട്.\nമികച്ച വൈ-ലെവൽ: Y = 15.", descManglish: "Netherite Nether-il Y = 8 thottu Y = 119 vare.\nBest Y-Level: Y = 15." }
+        ];
+
+        // Mob Database
+        const mobDatabase = [
+            { nameEn: "Armadillo", nameMl: "ആർമഡില്ലോ", foodEn: "Spider Eyes", foodMl: "സ്പൈഡർ ഐ", foodManglish: "Spider Eye", keys: ["armadillo", "ആർമഡില്ലോ"] },
+            { nameEn: "Axolotl", nameMl: "ആക്സലോട്ട്", foodEn: "Bucket of Tropical Fish", foodMl: "ട്രോപ്പിക്കൽ ഫിഷ് ബക്കറ്റ്", foodManglish: "Bucket of Tropical Fish", keys: ["axolotl", "ആക്സലോട്ട്", "auxolotl"] },
+            { nameEn: "Bee", nameMl: "തേനീച്ച", foodEn: "Any Flower", foodMl: "ഏതെങ്കിലും പൂക്കൾ", foodManglish: "pookkal (Flowers)", keys: ["bee", "ബി", "തേനീച്ച"] },
+            { nameEn: "Cat", nameMl: "പൂച്ച", foodEn: "Raw Cod or Raw Salmon", foodMl: "പച്ച മത്സ്യം", foodManglish: "Raw Cod/Salmon", keys: ["cat", "പൂച്ച"] },
+            { nameEn: "Chicken", nameMl: "കോഴി", foodEn: "Wheat/Pumpkin/Melon seeds", foodMl: "വിത്തുകൾ (Seeds)", foodManglish: "Seeds", keys: ["chicken", "കോഴി"] },
+            { nameEn: "Cow", nameMl: "പശു", foodEn: "Wheat", foodMl: "ഗോതമ്പ് (Wheat)", foodManglish: "Wheat", keys: ["cow", "പശു"] },
+            { nameEn: "Horse", nameMl: "കുതിര", foodEn: "Golden Apple / Golden Carrot", foodMl: "ഗോൾഡൻ ആപ്പിൾ/ക്യാരറ്റ്", foodManglish: "Golden Apple/Carrot", keys: ["horse", "കുതിര"] },
+            { nameEn: "Dog / Wolf", nameMl: "നായ", foodEn: "Raw or Cooked Meat", foodMl: "ഏതെങ്കിലും ഇറച്ചി", foodManglish: "Meat", keys: ["wolf", "dog", "പട്ടി", "നായ"] }
+        ];
+
+        function findMobWithTypo(userQuery) {
+            const words = userQuery.toLowerCase().split(/\s+/);
+            for (let mob of mobDatabase) {
+                if (mob.keys.some(k => userQuery.toLowerCase().includes(k))) return mob;
+            }
+            let bestMatch = null, lowestDistance = Infinity;
+            for (let word of words) {
+                if (word.length < 3) continue;
+                for (let mob of mobDatabase) {
+                    for (let key of mob.keys) {
+                        let dist = getLevenshteinDistance(word, key.toLowerCase());
+                        if (dist < lowestDistance && dist <= 2) {
+                            lowestDistance = dist;
+                            bestMatch = mob;
+                        }
+                    }
+                }
+            }
+            return bestMatch;
+        }
+
+        function findOreWithTypo(userQuery) {
+            const words = userQuery.toLowerCase().split(/\s+/);
+            for (let ore of oreDatabase) {
+                if (ore.keys.some(k => userQuery.toLowerCase().includes(k))) return ore;
+            }
+            let bestMatch = null, lowestDistance = Infinity;
+            for (let word of words) {
+                if (word.length < 3) continue;
+                for (let ore of oreDatabase) {
+                    for (let key of ore.keys) {
+                        let dist = getLevenshteinDistance(word, key.toLowerCase());
+                        if (dist < lowestDistance && dist <= 2) {
+                            lowestDistance = dist;
+                            bestMatch = ore;
+                        }
+                    }
+                }
+            }
+            return bestMatch;
+        }
+
+        function executeSearch() {
+            const rawQuery = document.getElementById('searchInput').value.trim();
+            const query = rawQuery.toLowerCase();
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '';
+
+            if (!query) return;
+            const lang = detectLanguageMode(rawQuery);
+
+            // 1. SKIN FETCHER
+            if (query.includes('skin') || query.includes('സ്കിൻ')) {
+                let gamertag = rawQuery.replace(/skin|സ്കിൻ/gi, '').trim() || "Steve";
+                const primarySkinUrl = `https://crafthead.net/armor/body/${encodeURIComponent(gamertag)}`;
+                const fallbackSkinUrl = `https://mc-heads.net/body/${encodeURIComponent(gamertag)}/180`;
+                const skinDownloadUrl = `https://crafthead.net/skin/${encodeURIComponent(gamertag)}`;
+
+                let responseText = lang === 'ml' ? `${gamertag} എന്ന ഗെയിമർ ടാഗിന്റെ സ്കിൻ താഴെ നൽകുന്നു.` : (lang === 'manglish' ? `${gamertag}-inte skin thaazhe nalkunnu.` : `Here is the skin for gamer tag ${gamertag}.`);
+                let btnText = lang === 'ml' ? "സ്കിൻ ഡൗൺലോഡ് ചെയ്യുക (PNG)" : (lang === 'manglish' ? "Skin download cheyyuka" : "Download Skin PNG");
+
+                container.innerHTML = `
+                    <div class="ai-response">${responseText}</div>
+                    <div class="skin-display">
+                        <img src="${primarySkinUrl}" alt="${gamertag}" onerror="this.onerror=null; this.src='${fallbackSkinUrl}';">
+                        <a href="${skinDownloadUrl}" target="_blank" download="${gamertag}_skin.png" class="download-link">${btnText}</a>
+                    </div>
+                `;
+                return;
+            }
+
+            // 2. NETHER CALCULATOR
+            if (query.includes('nether portal') || query.includes('പോർട്ടൽ') || query.includes('coord') || query.includes('calculator') || query.includes('കാൽക്കുലേറ്റർ')) {
+                container.innerHTML = `
+                    <div class="ai-response">Nether & Overworld Coordinate Calculator:</div>
+                    <div class="calc-box">
+                        <div class="calc-title">1. Nether ➔ Overworld</div>
+                        <div class="calc-row">
+                            <input type="number" id="netherX" placeholder="Nether X" oninput="calcNetherToOw()">
+                            <input type="number" id="netherZ" placeholder="Nether Z" oninput="calcNetherToOw()">
+                        </div>
+                        <div class="calc-result" id="owResult"></div>
+                    </div>
+                    <div class="calc-box">
+                        <div class="calc-title">2. Overworld ➔ Nether</div>
+                        <div class="calc-row">
+                            <input type="number" id="owX" placeholder="Overworld X" oninput="calcOwToNether()">
+                            <input type="number" id="owZ" placeholder="Overworld Z" oninput="calcOwToNether()">
+                        </div>
+                        <div class="calc-result" id="netherResult"></div>
+                    </div>
+                `;
+                return;
+            }
+
+            // 3. ORE FINDER
+            const matchedOre = findOreWithTypo(rawQuery);
+            if (matchedOre) {
+                container.innerHTML = `<div class="ai-response">${lang === 'ml' ? matchedOre.descMl : (lang === 'manglish' ? matchedOre.descManglish : matchedOre.descEn)}</div>`;
+                return;
+            }
+
+            // 4. MOB BREEDING
+            const matchedMob = findMobWithTypo(rawQuery);
+            if (matchedMob) {
+                let responseText = lang === 'ml' ? `${matchedMob.nameMl}-നെ ബ്രീഡ് ചെയ്യാൻ ${matchedMob.foodMl} നൽകുക.` : (lang === 'manglish' ? `${matchedMob.nameEn}-ne breed cheyyan ${matchedMob.foodManglish} kodukkuka.` : `To breed a ${matchedMob.nameEn}, feed them ${matchedMob.foodEn}.`);
+                container.innerHTML = `<div class="ai-response">${responseText}</div>`;
+                return;
+            }
+
+            container.innerHTML = `<div class="ai-response">Sorry, couldn't process that! Try asking about ore Y-levels, mob breeding, Nether coordinates, or skins.</div>`;
+        }
+
+        function calcNetherToOw() {
+            const nx = parseFloat(document.getElementById('netherX').value) || 0;
+            const nz = parseFloat(document.getElementById('netherZ').value) || 0;
+            document.getElementById('owResult').innerText = `Overworld Pos: X = ${nx * 8}, Z = ${nz * 8}`;
+        }
+
+        function calcOwToNether() {
+            const ox = parseFloat(document.getElementById('owX').value) || 0;
+            const oz = parseFloat(document.getElementById('owZ').value) || 0;
+            document.getElementById('netherResult').innerText = `Nether Pos: X = ${(ox / 8).toFixed(1)}, Z = ${(oz / 8).toFixed(1)}`;
+        }
+    </script>
+</body>
+</html>
